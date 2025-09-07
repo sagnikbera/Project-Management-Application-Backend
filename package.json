@@ -17,9 +17,13 @@
   },
   "license": "ISC",
   "author": "Sagnik Bera",
-  "type": "commonjs",
+  "type": "module",
   "main": "index.js",
   "scripts": {
+    "dev": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
   }
 }
