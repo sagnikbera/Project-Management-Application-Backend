@@ -1,0 +1,25 @@
+{
+  "name": "project-camp-backend",
+  "version": "1.0.0",
+  "description": "a project management application",
+  "keywords": [
+    "backend",
+    "API",
+    "creation"
+  ],
+  "homepage": "https://github.com/sagnikbera/Project-Camp-Backend#readme",
+  "bugs": {
+    "url": "https://github.com/sagnikbera/Project-Camp-Backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sagnikbera/Project-Camp-Backend.git"
+  },
+  "license": "ISC",
+  "author": "Sagnik Bera",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
