@@ -12,9 +12,9 @@ app.use(express.static("public"));
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN?.split(",") || "https://localhost:5173",
-    credentials:true,
-    methods: ["GET","POST","PUT","PATCH","DELETE","OPTION"],
-    allowedHeaders:["Authorization","Content-Type"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTION"],
+    allowedHeaders: ["Authorization", "Content-Type"],
   }),
 );
 

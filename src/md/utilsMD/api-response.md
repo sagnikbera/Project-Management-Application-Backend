@@ -1,7 +1,4 @@
-
-
 ```js
-
 class ApiResponse {
   constructor(statusCode, data, message = "Success") {
     // HTTP status code (e.g., 200, 201, 404, 500)
@@ -22,9 +19,7 @@ class ApiResponse {
 
 // Export the class so it can be used in other files (e.g., controllers, routes)
 export { ApiResponse };
-
 ```
-
 
 ### Example Usage:
 
@@ -54,10 +49,7 @@ console.log(res2);
   success: false
 }
 */
-
-
 ```
-
 
 # 📌 Why is the `constructor` made in ApiResponse?
 
@@ -66,19 +58,25 @@ The **constructor** in the `ApiResponse` class is used to **automatically build 
 ---
 
 ## 🔹 Problem without constructor
+
 Normally, in Express you might write:
 
 ```js
 res.json({ statusCode: 200, data: user, message: "Success", success: true });
-res.json({ statusCode: 404, data: null, message: "User not found", success: false });
+res.json({
+  statusCode: 404,
+  data: null,
+  message: "User not found",
+  success: false,
+});
 ```
+
 ## ⚠️ Issues
 
-- **Repetition** → the same response structure has to be written everywhere.  
-- **Risk of typos** → easy to make mistakes or miss a field.  
-- **Inconsistent formats** → different routes may return slightly different JSON.  
-- **Harder to maintain** → changing response format requires updating multiple files.  
-
+- **Repetition** → the same response structure has to be written everywhere.
+- **Risk of typos** → easy to make mistakes or miss a field.
+- **Inconsistent formats** → different routes may return slightly different JSON.
+- **Harder to maintain** → changing response format requires updating multiple files.
 
 ## 🔹 How constructor helps
 
@@ -92,7 +90,7 @@ new ApiResponse(404, null, "User not found");
 
 ## 🔹 Benefits
 
-1. **Reusability** → one class works for all responses.  
-2. **Consistency** → all responses follow the same structure.  
-3. **Less code** → no need to repeat boilerplate JSON.  
-4. **Flexibility** → you can add fields (like `timestamp`, `requestId`, etc.) in one place and it applies everywhere.  
+1. **Reusability** → one class works for all responses.
+2. **Consistency** → all responses follow the same structure.
+3. **Less code** → no need to repeat boilerplate JSON.
+4. **Flexibility** → you can add fields (like `timestamp`, `requestId`, etc.) in one place and it applies everywhere.

@@ -37,7 +37,8 @@ export { ApiError };
 ```
 
 ## Example Usage:
-``` js
+
+```js
 import { ApiError } from "./api-error.js";
 
 // ❌ Validation error
@@ -70,18 +71,21 @@ console.log(err2);
 ```
 
 ## 🔹 Problem without constructor
+
 ```js
 throw new Error("User not found");
 throw new Error("Invalid input");
 ```
 
 ### ⚠️ Issues
+
 - **No status code** → hard to distinguish between client error (400) and server error (500).
 - **Inconsistent format** → each error may have different properties.
 - **No structured errors** → hard to include validation errors.
 - **Debugging issues** → stack traces are not standardized.
 
 ## 🔹 How constructor helps
+
 ```js
 new ApiError(404, "User not found");
 // 👆 Creates { statusCode: 404, data: null, message: "User not found", success: false, errors: [] }
