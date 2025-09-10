@@ -12,8 +12,7 @@
 
 const asyncHandler = (reqHandler) => {
   return (req, res, next) => {
-    Promise
-      .resolve(reqHandler(req, res, next)) // Call the actual controller
+    Promise.resolve(reqHandler(req, res, next)) // Call the actual controller
       .catch((err) => next(err)); // Forward error to Express error middleware
   };
 };

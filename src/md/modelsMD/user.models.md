@@ -8,8 +8,8 @@ const userSchema = new Schema(
     // Avatar field (object with url and localPath)
     avatar: {
       type: {
-        url: String,        // Public URL for profile picture
-        localPath: String,  // File system path (if stored locally)
+        url: String, // Public URL for profile picture
+        localPath: String, // File system path (if stored locally)
       },
       default: {
         url: `https://placehold.co/200x200`, // Default avatar if user doesn't upload one
@@ -20,18 +20,18 @@ const userSchema = new Schema(
     // Username (unique identifier apart from email)
     username: {
       type: String,
-      required: true,  // Must be provided
-      unique: true,    // No two users can have the same username
+      required: true, // Must be provided
+      unique: true, // No two users can have the same username
       lowercase: true, // Stored in lowercase for consistency
-      trim: true,      // Removes spaces at start and end
-      index: true,     // Makes searching faster
+      trim: true, // Removes spaces at start and end
+      index: true, // Makes searching faster
     },
 
     // Email field
     email: {
       type: String,
-      required: true,  // Must be provided
-      unique: true,    // No duplicate emails
+      required: true, // Must be provided
+      unique: true, // No duplicate emails
       lowercase: true, // Stored in lowercase
       trim: true,
     },
@@ -64,7 +64,7 @@ const userSchema = new Schema(
       type: String, // Token sent to user’s email for password reset
     },
     forgotPasswordExpiry: {
-      type: Date,   // Expiry time of reset token
+      type: Date, // Expiry time of reset token
     },
 
     // Email verification tokens
@@ -72,7 +72,7 @@ const userSchema = new Schema(
       type: String, // Token sent via email to verify account
     },
     emailVarificationExpiry: {
-      type: Date,   // Expiry time for verification token
+      type: Date, // Expiry time for verification token
     },
   },
   {
@@ -86,5 +86,4 @@ const User = mongoose.model("User", userSchema);
 
 // Export the model so it can be used in controllers/services
 export { User };
-
 ```
