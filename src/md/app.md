@@ -39,6 +39,18 @@ app.use(
 );
 ```
 
+### Routes
+```js
+// Importing the health check router from the routes folder.
+// This router file defines how requests to "/api/v1/healthcheck" should be handled.
+import healthCheckRouter from "./routes/healthcheck.routes.js"
+
+// Mounting the healthCheckRouter on the path "/api/v1/healthcheck".
+// This means: any request starting with "/api/v1/healthcheck" will be forwarded
+// to the routes defined inside healthcheck.routes.js.
+app.use("/api/v1/healthcheck", healthCheckRouter);
+```
+
 | Method      | Purpose                           | Example Request                                                         | Example Use Case                        |
 | ----------- | --------------------------------- | ----------------------------------------------------------------------- | --------------------------------------- |
 | **GET**     | Retrieve data                     | `GET /users`                                                            | Fetch a list of users                   |
