@@ -159,6 +159,41 @@ const login = asyncHandler(async (req, res) => {
 });
 ```
 
+### logout
+
+```js
+// Controller to log out the user
+const logout = asyncHandler(async (req, res) => {
+  // 1. Remove (invalidate) the refresh token stored in DB for this user
+  await User.findByIdAndUpdate(
+    req.user_id, // <-- BUG: should be `req.user._id` (from verifyJWT middleware)
+    {
+      $set: {
+        refreshToken: "", // Clear stored refresh token
+      },
+    },
+    {
+      new: true, // Return updated document (not used here, but good practice)
+    },
+  );
+
+  // 2. Cookie options (must match how cookies were originally set)
+  const options = {
+    httpOnly: true, // Make cookies inaccessible from client-side JS
+    secure: true, // Cookies only sent over HTTPS
+  };
+
+  // 3. Clear authentication cookies and send success response
+  return res
+    .status(200)
+    .clearCookie("accessToken", options) // Remove access token cookie
+    .clearCookie("refreshToken", options) // Remove refresh token cookie
+    .json(
+      new ApiResponse(200, {}, "User Logged Out!"), // Send success message
+    );
+});
+```
+
 ---
 
 ---
