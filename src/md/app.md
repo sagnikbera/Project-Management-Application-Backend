@@ -1,6 +1,12 @@
 ## BASIC CONFIGURATION
 
 ```js
+import express from "express"; // Import Express framework
+import cors from "cors"; // Import CORS middleware (for cross-origin requests)
+import cookieParser from "cookie-parser"; // Import cookie-parser (to read cookies in requests)
+
+const app = express(); // Create an Express application instance
+
 //? BASIC CONFIGURATION
 
 // Middleware to parse incoming JSON payloads
@@ -10,6 +16,8 @@ app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 // Serves static files (images, CSS, JS, etc.) from the "public" folder
 app.use(express.static("public"));
+// Parse cookies from incoming requests and make them available as `req.cookies`
+app.use(cookieParser());
 ```
 
 ## CORS CONFIGURATION

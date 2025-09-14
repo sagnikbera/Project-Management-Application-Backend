@@ -88,3 +88,111 @@ const registerUser = asyncHandler(async (req, res) => {
 
 export { registerUser }; // Export controller
 ```
+
+---
+
+---
+
+### Login
+
+```js
+// Controller: Login existing user
+const login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body; // Extract email & password from request body
+
+  // ✅ 1. Check if email is provided
+  if (!email) {
+    throw new ApiError(400, "Username or email is required !");
+  }
+
+  // ✅ 2. Find user by email
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    throw new ApiError(400, "User does not exists !");
+  }
+
+  // ✅ 3. Validate password using model method
+  // (compare entered password with hashed password in DB)
+  const isPasswordValid = user.isPasswordCorrect(password);
+
+  if (!isPasswordValid) {
+    throw new ApiError(400, "Invalid credentials !");
+  }
+
+  // ✅ 4. Generate Access + Refresh Tokens
+  const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
+    user._id,
+  );
+
+  // ✅ 5. Fetch logged in user (without sensitive fields)
+  const loggedInUser = await User.findById(user._id).select(
+    "-password -refreshToken -emailVarificationToken -emailVarificationExpiry",
+  );
+
+  if (!loggedInUser) {
+    throw new ApiError(500, "Something went wrong while registering the user.");
+  }
+
+  // ✅ 6. Cookie options for security
+  const options = {
+    httpOnly: true, // Prevent client-side JS from accessing cookies
+    secure: true, // Cookie will only be sent over HTTPS
+  };
+
+  // ✅ 7. Send response → set cookies + return API response
+  return res
+    .status(200)
+    .cookie("accessToken", accessToken, options) // Store accessToken in cookie
+    .cookie("refreshToken", refreshToken, options) // Store refreshToken in cookie
+    .json(
+      new ApiResponse(
+        200,
+        {
+          user: loggedInUser, // Return user details (safe version)
+          accessToken, // Also send tokens in response body
+          refreshToken,
+        },
+        "User Logged In Sucessfully", // Success message
+      ),
+    );
+});
+```
+
+---
+
+---
+
+# 🍪 Cookie Options in Express (`res.cookie`)
+
+## Available Options
+
+| Option         | Type           | Default              | Description                                                                                 |
+| -------------- | -------------- | -------------------- | ------------------------------------------------------------------------------------------- |
+| **`maxAge`**   | Number (ms)    | `null`               | How long the cookie lasts in milliseconds (auto-expires after that).                        |
+| **`expires`**  | Date           | `null`               | Specific date when the cookie should expire. Overrides `maxAge` if present.                 |
+| **`httpOnly`** | Boolean        | `false`              | If `true`, cookie **cannot** be accessed by JS (`document.cookie`) → safer against **XSS**. |
+| **`secure`**   | Boolean        | `false`              | If `true`, cookie is sent **only over HTTPS**.                                              |
+| **`sameSite`** | String/Boolean | `false`              | Controls cross-site cookie behavior: `"strict"`, `"lax"`, or `"none"`.                      |
+| **`path`**     | String         | `'/'`                | URL path the cookie belongs to (default root).                                              |
+| **`domain`**   | String         | Current domain       | Specifies which domain can access the cookie.                                               |
+| **`signed`**   | Boolean        | `false`              | If `true`, signs the cookie with `cookie-parser` secret to prevent tampering.               |
+| **`priority`** | String         | `null`               | (Chrome only) `"low"`, `"medium"`, `"high"`. Controls eviction priority.                    |
+| **`encode`**   | Function       | `encodeURIComponent` | Custom encoding function for the cookie value.                                              |
+
+---
+
+## ✅ Example: Using All Options
+
+```js
+res.cookie("accessToken", accessToken, {
+  maxAge: 15 * 60 * 1000, // 15 minutes
+  expires: new Date(Date.now() + 15 * 60 * 1000), // exact expiry
+  httpOnly: true, // not accessible via JS
+  secure: true, // HTTPS only
+  sameSite: "strict", // protect against CSRF
+  path: "/", // available site-wide
+  domain: "example.com", // only for this domain
+  signed: false, // not signed
+});
+```
