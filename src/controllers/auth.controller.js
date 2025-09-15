@@ -98,7 +98,7 @@ const login = asyncHandler(async (req, res) => {
     throw new ApiError(400, "User does not exists !");
   }
 
-  const isPasswordValid = user.isPasswordCorrect(password);
+  const isPasswordValid = await user.isPasswordCorrect(password);
 
   if (!isPasswordValid) {
     throw new ApiError(400, "Invalid credentials !");
@@ -141,7 +141,7 @@ const login = asyncHandler(async (req, res) => {
 //! Log Out
 const logout = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
-    req.user_id,
+    req.user?._id,
     {
       $set: {
         refreshToken: "",
@@ -247,7 +247,7 @@ const resendEmailVerification = asyncHandler(async (req, res) => {
 //! Refresh access token
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incommingRefreshToken =
-    req.cookie.refreshToken || req.body.refreshToken;
+    req.cookies?.refreshToken || req.body.refreshToken;
 
   if (!incommingRefreshToken) {
     throw new ApiError(401, "Unauthorixed access!");
@@ -328,9 +328,57 @@ const forgotPasswordRequest = asyncHandler(async (req, res) => {
     );
 });
 
-//!
+//! Reset forget password
+const resetForgotPassword = asyncHandler(async (req, res) => {
+  const { resetToken } = req.params;
+  const { newPassword } = req.body;
 
-// const getCurrentUser = asyncHandler(async (req , res) => {})
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  const user = await User.findOne({
+    forgotPasswordToken: hashedToken,
+    forgotPasswordExpiry: { $gt: Date.now() },
+  });
+
+  if (!user) {
+    throw new ApiError(404, "Token is invalid or expired!");
+  }
+
+  user.forgotPasswordExpiry = undefined;
+  user.forgotPasswordToken = undefined;
+
+  user.password = newPassword;
+  user.refreshToken = "";
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password reset successfully!"));
+});
+
+//! Change password
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  const user = await User.findById(req.user?._id);
+
+  const isPasswordValid = await user.isPasswordCorrect(oldPassword);
+
+  if (!isPasswordValid) {
+    throw new ApiError(400, "Invalid old password!");
+  }
+
+  user.password = newPassword;
+  user.refreshToken = "";
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully!"));
+});
 
 export {
   registerUser,
@@ -339,4 +387,7 @@ export {
   getCurrentUser,
   verifyEmail,
   resendEmailVerification,
+  resetForgotPassword,
+  forgotPasswordRequest,
+  changeCurrentPassword,
 };

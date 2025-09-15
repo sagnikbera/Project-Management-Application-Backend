@@ -1,71 +1,99 @@
+### import
+
 ```js
 import { User } from "../models/user.models.js"; // Import User model
 import { ApiResponse } from "../utils/api-response.js"; // Utility for consistent API responses
 import { ApiError } from "../utils/api-error.js"; // Custom API error handler
 import { asyncHandler } from "../utils/async-handler.js"; // Async wrapper to catch errors in controllers
 import { emailVerificationMail, sendEmail } from "../utils/mail.js"; // Email utilities
+```
 
-// Function to generate access and refresh tokens for a user
+---
+
+### Generate Access & Refresh Token
+
+```js
+// Utility function: Generate Access & Refresh Token
 const generateAccessAndRefreshToken = async (userId) => {
   try {
-    const user = await User.findById(userId); // Find user by ID
-    const accessToken = user.generateAccessToken(); // Generate JWT access token
-    const refreshToken = user.generateRefreshToken(); // Generate JWT refresh token
+    // 🔍 1. Find the user in the database using their ID
+    const user = await User.findById(userId);
 
-    user.refreshToken = refreshToken; // Save refresh token in DB
-    await user.save({ validateBeforeSave: false }); // Save user without running validation checks
+    // ⚡ 2. Generate a new access token (short-lived, e.g., 15m – 1h)
+    const accessToken = user.generateAccessToken();
 
-    return { accessToken, refreshToken }; // Return tokens
+    // 🔑 3. Generate a new refresh token (long-lived, e.g., 7d – 30d)
+    const refreshToken = user.generateRefreshToken();
+
+    // 📝 4. Save the refresh token in the database against the user
+    //    - This ensures we can later validate refresh tokens
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+    // (skip validation so password/email checks don't run unnecessarily)
+
+    // ✅ 5. Return both tokens to the calling function (usually login or refresh)
+    return { accessToken, refreshToken };
   } catch (error) {
+    // ❌ If something goes wrong (DB issue, token gen failure), throw server error
     throw new ApiError(
       500,
-      "Something went wrong while generating access Token.", // Custom error if token generation fails
+      "Something went wrong while generating access Token.",
     );
   }
 };
+```
 
-// Controller: Register a new user
+---
+
+### Register User
+
+```js
+// Controller: Register User
 const registerUser = asyncHandler(async (req, res) => {
-  const { email, username, password, role } = req.body; // Extract data from request body
+  // 1️⃣ Extract required fields from request body
+  const { email, username, password, role } = req.body;
 
-  // Check if user already exists (by email or username)
+  // 2️⃣ Check if a user already exists with same email OR username
   const existedUser = await User.findOne({
-    $or: [{ username }, { email }],
+    $or: [{ username }, { email }], // search by either username or email
   });
 
   if (existedUser) {
+    // If user found → return conflict error
     throw new ApiError(409, "User email or username already exists", []);
   }
 
-  // Create new user (email not verified yet)
+  // 3️⃣ Create a new user in DB
   const user = await User.create({
     username: username,
     email: email,
-    password: password,
-    isEmailVarified: false,
+    password: password, // 🔒 Will be hashed in pre-save hook
+    isEmailVarified: false, // default: unverified until user clicks verification mail
   });
 
-  // Generate temporary verification token
+  // 4️⃣ Generate a temporary token for email verification
   const { unHashedToken, hashedToken, tokenExpiry } =
     user.generateTemoporaryToken();
 
-  // Save verification token + expiry in DB
+  // Save the hashed token & expiry in DB
   user.emailVarificationToken = hashedToken;
   user.emailVarificationExpiry = tokenExpiry;
 
-  await user.save({ validateBeforeSave: false }); // Save without validation
+  // Save user again without running validations
+  await user.save({ validateBeforeSave: false });
 
-  // Send verification email with link
+  // 5️⃣ Send verification email with unHashedToken (raw token) in link
   await sendEmail({
-    email: user?.email, // recipient
+    email: user?.email,
     subject: "Please verify you email.",
     mailgenContent: emailVerificationMail(
       user.username,
-      `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`, // Verification link with unhashed token
+      // Example: http://localhost:5000/api/va/users/verify-email/123abc
+      `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`,
     ),
   });
 
-  // Fetch created user but hide sensitive fields
+  // 6️⃣ Fetch the created user but exclude sensitive fields
   const createdUser = await User.findById(user._id).select(
     "-password -refreshToken -emailVarificationToken -emailVarificationExpiry",
   );
@@ -74,7 +102,7 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Something went wrong while registering the user.");
   }
 
-  // Send success response
+  // 7️⃣ Return response with created user info
   return res
     .status(201)
     .json(
@@ -85,8 +113,6 @@ const registerUser = asyncHandler(async (req, res) => {
       ),
     );
 });
-
-export { registerUser }; // Export controller
 ```
 
 ---
@@ -96,64 +122,79 @@ export { registerUser }; // Export controller
 ### Login
 
 ```js
-// Controller: Login existing user
 const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.body; // Extract email & password from request body
+  // Extract credentials from request body
+  const { email, password } = req.body;
 
-  // ✅ 1. Check if email is provided
+  // Basic validation: require an email (you only accept email here, not username)
+  // Throws a 400 Bad Request if missing.
   if (!email) {
     throw new ApiError(400, "Username or email is required !");
+    // Suggestion: change message to "Email is required!" for clarity since you use email to login.
   }
 
-  // ✅ 2. Find user by email
+  // Find user by email in the database
   const user = await User.findOne({ email });
 
+  // If no user found -> invalid credentials (don't reveal too much info in prod)
   if (!user) {
     throw new ApiError(400, "User does not exists !");
+    // Suggestion: consider returning a generic "Invalid credentials" to avoid email enumeration.
   }
 
-  // ✅ 3. Validate password using model method
-  // (compare entered password with hashed password in DB)
-  const isPasswordValid = user.isPasswordCorrect(password);
+  // Verify provided password against hashed password stored in DB.
+  // isPasswordCorrect is your model method that uses bcrypt.compare, and it's async.
+  const isPasswordValid = await user.isPasswordCorrect(password);
 
+  // If password doesn't match -> invalid credentials
   if (!isPasswordValid) {
     throw new ApiError(400, "Invalid credentials !");
   }
 
-  // ✅ 4. Generate Access + Refresh Tokens
+  // Generate access and refresh tokens and persist refreshToken to DB.
+  // generateAccessAndRefreshToken fetches user, creates JWTs and saves the refresh token.
   const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
     user._id,
   );
 
-  // ✅ 5. Fetch logged in user (without sensitive fields)
+  // Re-query the user but exclude sensitive fields before sending to client.
+  // "-password -refreshToken -emailVarificationToken -emailVarificationExpiry"
+  // ensures these fields are not present in the returned object.
   const loggedInUser = await User.findById(user._id).select(
     "-password -refreshToken -emailVarificationToken -emailVarificationExpiry",
   );
 
+  // If for some reason the user cannot be fetched, throw server error
   if (!loggedInUser) {
+    // Note: message says "registering" but this is login — consider updating the message.
     throw new ApiError(500, "Something went wrong while registering the user.");
   }
 
-  // ✅ 6. Cookie options for security
+  // Cookie options for security:
+  // - httpOnly: prevents JavaScript access (mitigates XSS stealing cookies)
+  // - secure: cookie sent only over HTTPS
   const options = {
-    httpOnly: true, // Prevent client-side JS from accessing cookies
-    secure: true, // Cookie will only be sent over HTTPS
+    httpOnly: true,
+    secure: true,
+    // You may also want to add sameSite: "lax" or "strict", and maxAge (in ms)
   };
 
-  // ✅ 7. Send response → set cookies + return API response
+  // Respond: set cookies and return JSON payload with user + tokens.
+  // Note: returning accessToken/refreshToken in JSON exposes them to client JS;
+  // you may omit them from JSON for web clients and rely on httpOnly cookies instead.
   return res
     .status(200)
-    .cookie("accessToken", accessToken, options) // Store accessToken in cookie
-    .cookie("refreshToken", refreshToken, options) // Store refreshToken in cookie
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
     .json(
       new ApiResponse(
         200,
         {
-          user: loggedInUser, // Return user details (safe version)
-          accessToken, // Also send tokens in response body
+          user: loggedInUser,
+          accessToken,
           refreshToken,
         },
-        "User Logged In Sucessfully", // Success message
+        "User Logged In Sucessfully",
       ),
     );
 });
@@ -162,35 +203,33 @@ const login = asyncHandler(async (req, res) => {
 ### logout
 
 ```js
-// Controller to log out the user
 const logout = asyncHandler(async (req, res) => {
-  // 1. Remove (invalidate) the refresh token stored in DB for this user
+  // Remove the refresh token stored in the database for the current user.
+  // This makes any existing refresh tokens invalid for generating new access tokens.
   await User.findByIdAndUpdate(
-    req.user_id, // <-- BUG: should be `req.user._id` (from verifyJWT middleware)
+    req.user?._id, // Current logged-in user's ID, injected by your auth middleware
     {
-      $set: {
-        refreshToken: "", // Clear stored refresh token
-      },
+      $set: { refreshToken: "" }, // Clear the stored refresh token
     },
-    {
-      new: true, // Return updated document (not used here, but good practice)
-    },
+    { new: true }, // Ensures the updated user document would be returned (though unused here)
   );
 
-  // 2. Cookie options (must match how cookies were originally set)
+  // Cookie security options — same as when setting them during login:
+  // - httpOnly: true  → prevents client-side JS from accessing cookies
+  // - secure: true    → ensures cookies are sent only over HTTPS
   const options = {
-    httpOnly: true, // Make cookies inaccessible from client-side JS
-    secure: true, // Cookies only sent over HTTPS
+    httpOnly: true,
+    secure: true,
+    // Suggestion: add sameSite: "strict" or "lax" to mitigate CSRF
   };
 
-  // 3. Clear authentication cookies and send success response
+  // Clear both accessToken and refreshToken cookies from the browser
+  // and respond with a success message.
   return res
     .status(200)
-    .clearCookie("accessToken", options) // Remove access token cookie
-    .clearCookie("refreshToken", options) // Remove refresh token cookie
-    .json(
-      new ApiResponse(200, {}, "User Logged Out!"), // Send success message
-    );
+    .clearCookie("accessToken", options) // removes accessToken cookie
+    .clearCookie("refreshToken", options) // removes refreshToken cookie
+    .json(new ApiResponse(200, {}, "User Logged Out!"));
 });
 ```
 
@@ -199,18 +238,19 @@ const logout = asyncHandler(async (req, res) => {
 ### getCurrentUser
 
 ```js
-// Controller to get the currently authenticated user
+// Controller: Get Current User
 const getCurrentUser = asyncHandler(async (req, res) => {
-  // If authentication middleware (like verifyJWT) is used,
-  // it usually attaches the logged-in user's info into req.user
+  // `req.user` is expected to be populated by your authentication middleware.
+  // Usually, this happens after verifying a JWT (access token) and decoding the user’s ID.
+  // Middleware finds the user in DB and attaches it to `req.user`.
 
   return res
-    .status(200) // HTTP status 200 = OK
+    .status(200) // Send HTTP 200 OK response
     .json(
       new ApiResponse(
-        200, // custom response status
-        req.user, // the user object already attached to request
-        "Current user fetched successfully.", // success message
+        200, // Custom status code (same as HTTP here, but consistent with ApiResponse structure)
+        req.user, // Send back the current user object
+        "Current user fetched successfully.", // Friendly message
       ),
     );
 });
@@ -221,48 +261,54 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 ### Verify Email
 
 ```js
+// Controller: Verify User Email
 const verifyEmail = asyncHandler(async (req, res) => {
-  // Extract verification token from URL params
+  // Extract the token sent in the request URL parameters
   const { verificationToken } = req.params;
 
-  // If no token provided, throw error
+  // If no token is provided in the request, throw an error
   if (!verificationToken) {
     throw new ApiError(400, "Email verification token is missing!");
   }
 
-  // Hash the received token so it matches the one stored in DB
+  // Convert the plain token into a hashed token
+  // We hash it because in DB we store the hashed version for security
   let hashedToken = crypto
-    .createHash("sha256")
-    .update(verificationToken)
-    .digest("hex");
+    .createHash("sha256") // Using SHA-256 algorithm
+    .update(verificationToken) // Hash the provided token
+    .digest("hex"); // Convert to hexadecimal string
 
-  // Find a user with matching hashed token and token not expired
+  // Try to find a user in DB with this hashed token
+  // Also ensure the token has not expired
   const user = await User.findOne({
     emailVarificationToken: hashedToken,
-    emailVarificationExpiry: { $gt: Date.now() }, // expiry must be in the future
+    emailVarificationExpiry: { $gt: Date.now() }, // expiry time must be in the future
   });
 
-  // If no user found → invalid or expired token
+  // If no matching user is found, token is invalid or expired
   if (!user) {
     throw new ApiError(400, "Token is invalid or expired!");
   }
 
-  // Clear verification token and expiry from user document
+  // Clear the verification fields since the email is now verified
   user.emailVarificationToken = undefined;
   user.emailVarificationExpiry = undefined;
 
-  // Mark email as verified
+  // Mark the email as verified
   user.isEmailVarified = true;
 
-  // Save changes to DB without running validation rules
+  // Save the user document without running validations
+  // (because only verification fields are updated)
   await user.save({ validateBeforeSave: false });
 
-  // Respond with success
+  // Send success response back to client
   return res.status(200).json(
     new ApiResponse(
       200,
-      { isEmailVarified: true }, // return status of verification
-      "Email is verified!",
+      {
+        isEmailVarified: true, // Let the client know verification succeeded
+      },
+      "Email is verified!", // Friendly message
     ),
   );
 });
@@ -273,47 +319,46 @@ const verifyEmail = asyncHandler(async (req, res) => {
 ### Resent email verification
 
 ```js
+// Controller: Resend Email Verification
 const resendEmailVerification = asyncHandler(async (req, res) => {
-  // Find the currently logged-in user by ID (req.user is set by auth middleware)
+  // 🔍 1. Find the logged-in user by their ID (comes from req.user after JWT verification)
   const user = await User.findById(req.user?._id);
 
-  // If user not found → throw error
+  // ❌ If user not found, throw 404 error
   if (!user) {
     throw new ApiError(404, "User does not exist");
   }
 
-  // If email already verified → no need to resend verification
+  // ⚡ If user is already verified, block the request (no need to send verification again)
   if (user.isEmailVarified) {
     throw new ApiError(409, "Email is already verified!");
   }
 
-  // Generate a new temporary token for email verification
-  // This function returns:
-  //   - unHashedToken → plain token (to send in email link)
-  //   - hashedToken   → hashed version (stored in DB for security)
-  //   - tokenExpiry   → expiry time (e.g., 10 minutes)
+  // 🔑 2. Generate a new temporary email verification token
+  // - unHashedToken → plain token (to be sent in email link)
+  // - hashedToken   → secure hash stored in DB
+  // - tokenExpiry   → expiry timestamp for token validity
   const { unHashedToken, hashedToken, tokenExpiry } =
     user.generateTemoporaryToken();
 
-  // Save hashed token and expiry in DB
+  // 📝 3. Save the hashed token and expiry in the database for this user
   user.emailVarificationToken = hashedToken;
   user.emailVarificationExpiry = tokenExpiry;
 
-  // Save user without running schema validation again
-  await user.save({ validateBeforeSave: false });
+  await user.save({ validateBeforeSave: false }); // Skip field validations for speed
 
-  // Send verification email to user
-  // The email contains a clickable link with the plain (unhashed) token
+  // 📧 4. Send email containing the verification link
   await sendEmail({
     email: user?.email,
-    subject: "Please verify you email.",
+    subject: "Please verify your email.", // Subject line of the email
     mailgenContent: emailVerificationMail(
-      user.username,
+      user.username, // Personalize with username
+      // Construct full verification URL (with unhashed token)
       `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`,
     ),
   });
 
-  // Return success response
+  // ✅ 5. Send back success response
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "Mail has been sent to your email."));
@@ -470,6 +515,94 @@ const forgotPasswordRequest = asyncHandler(async (req, res) => {
 ```
 
 ---
+
+### Reset forget password
+
+```js
+const resetForgotPassword = asyncHandler(async (req, res) => {
+  // Extract reset token from the URL params (sent via email link)
+  const { resetToken } = req.params;
+
+  // Extract the new password from request body
+  const { newPassword } = req.body;
+
+  // Hash the resetToken using sha256 (because we stored only hashed version in DB)
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+
+  // Search for a user with matching hashed token and a non-expired expiry time
+  const user = await User.findOne({
+    forgotPasswordToken: hashedToken,
+    forgotPasswordExpiry: { $gt: Date.now() }, // must not be expired
+  });
+
+  // If no user found → token is invalid or expired
+  if (!user) {
+    throw new ApiError(404, "Token is invalid or expired!");
+  }
+
+  // Clear the reset token and expiry after successful verification
+  // This ensures the token cannot be reused (one-time usage).
+  user.forgotPasswordExpiry = undefined;
+  user.forgotPasswordToken = undefined;
+
+  // Assign the new password
+  // NOTE: The userSchema has a pre("save") hook that automatically hashes
+  // password if modified, but here you're calling save with `validateBeforeSave:false`.
+  // That may skip validations, but the pre-save hashing will still run.
+  user.password = newPassword;
+
+  user.refreshToken = ""; // invalidate old sessions
+
+  // Save updated user (with new password & cleared reset fields)
+  await user.save({ validateBeforeSave: false });
+
+  // Send success response
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password reset successfully!"));
+});
+```
+
+---
+
+### Change password
+
+```js
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+  // Extract old and new passwords from the request body
+  const { oldPassword, newPassword } = req.body;
+
+  // Find the currently logged-in user using the ID from req.user (set by auth middleware)
+  const user = await User.findById(req.user?._id);
+
+  // Check if the provided old password matches the one stored in DB
+  // isPasswordCorrect() is a custom method from your User schema (uses bcrypt.compare)
+  const isPasswordValid = await user.isPasswordCorrect(oldPassword);
+
+  // If old password is incorrect, throw error
+  if (!isPasswordValid) {
+    throw new ApiError(400, "Invalid old password!");
+  }
+
+  // If old password is correct, set the new password
+  user.password = newPassword;
+
+  user.refreshToken = ""; // invalidate old sessions
+
+  // Save user with new password
+  // Note: `validateBeforeSave: false` skips schema validation,
+  // but your pre("save") hook will still hash the password properly
+  await user.save({ validateBeforeSave: false });
+
+  // Return success response
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Password changed successfully!"));
+});
+```
 
 ---
 
