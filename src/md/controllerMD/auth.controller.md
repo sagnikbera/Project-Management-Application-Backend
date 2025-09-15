@@ -196,6 +196,32 @@ const logout = asyncHandler(async (req, res) => {
 
 ---
 
+### getCurrentUser
+
+```js
+// Controller to get the currently authenticated user
+const getCurrentUser = asyncHandler(async (req, res) => {
+  // If authentication middleware (like verifyJWT) is used,
+  // it usually attaches the logged-in user's info into req.user
+
+  return res
+    .status(200) // HTTP status 200 = OK
+    .json(
+      new ApiResponse(
+        200, // custom response status
+        req.user, // the user object already attached to request
+        "Current user fetched successfully.", // success message
+      ),
+    );
+});
+```
+
+---
+
+---
+
+---
+
 ---
 
 # 🍪 Cookie Options in Express (`res.cookie`)
