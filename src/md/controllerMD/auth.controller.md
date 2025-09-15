@@ -218,6 +218,107 @@ const getCurrentUser = asyncHandler(async (req, res) => {
 
 ---
 
+### Verify Email
+
+```js
+const verifyEmail = asyncHandler(async (req, res) => {
+  // Extract verification token from URL params
+  const { verificationToken } = req.params;
+
+  // If no token provided, throw error
+  if (!verificationToken) {
+    throw new ApiError(400, "Email verification token is missing!");
+  }
+
+  // Hash the received token so it matches the one stored in DB
+  let hashedToken = crypto
+    .createHash("sha256")
+    .update(verificationToken)
+    .digest("hex");
+
+  // Find a user with matching hashed token and token not expired
+  const user = await User.findOne({
+    emailVarificationToken: hashedToken,
+    emailVarificationExpiry: { $gt: Date.now() }, // expiry must be in the future
+  });
+
+  // If no user found → invalid or expired token
+  if (!user) {
+    throw new ApiError(400, "Token is invalid or expired!");
+  }
+
+  // Clear verification token and expiry from user document
+  user.emailVarificationToken = undefined;
+  user.emailVarificationExpiry = undefined;
+
+  // Mark email as verified
+  user.isEmailVarified = true;
+
+  // Save changes to DB without running validation rules
+  await user.save({ validateBeforeSave: false });
+
+  // Respond with success
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { isEmailVarified: true }, // return status of verification
+      "Email is verified!",
+    ),
+  );
+});
+```
+---
+### Resent email verification
+```js
+const resendEmailVerification = asyncHandler(async (req, res) => {
+  // Find the currently logged-in user by ID (req.user is set by auth middleware)
+  const user = await User.findById(req.user?._id);
+
+  // If user not found → throw error
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
+
+  // If email already verified → no need to resend verification
+  if (user.isEmailVarified) {
+    throw new ApiError(409, "Email is already verified!");
+  }
+
+  // Generate a new temporary token for email verification
+  // This function returns:
+  //   - unHashedToken → plain token (to send in email link)
+  //   - hashedToken   → hashed version (stored in DB for security)
+  //   - tokenExpiry   → expiry time (e.g., 10 minutes)
+  const { unHashedToken, hashedToken, tokenExpiry } =
+    user.generateTemoporaryToken();
+
+  // Save hashed token and expiry in DB
+  user.emailVarificationToken = hashedToken;
+  user.emailVarificationExpiry = tokenExpiry;
+
+  // Save user without running schema validation again
+  await user.save({ validateBeforeSave: false });
+
+  // Send verification email to user
+  // The email contains a clickable link with the plain (unhashed) token
+  await sendEmail({
+    email: user?.email,
+    subject: "Please verify you email.",
+    mailgenContent: emailVerificationMail(
+      user.username,
+      `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`
+    ),
+  });
+
+  // Return success response
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Mail has been sent to your email."));
+});
+```
+---
+
+
 ---
 
 ---

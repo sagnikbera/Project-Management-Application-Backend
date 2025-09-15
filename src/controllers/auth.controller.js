@@ -4,7 +4,9 @@ import { ApiError } from "../utils/api-error.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { emailVerificationMail, sendEmail } from "../utils/mail.js";
 import crypto from "crypto";
+import jwt from "jsonwebtoken"
 
+//! Generate Access & Refresh Token
 const generateAccessAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -23,6 +25,7 @@ const generateAccessAndRefreshToken = async (userId) => {
   }
 };
 
+//! Register User
 const registerUser = asyncHandler(async (req, res) => {
   const { email, username, password, role } = req.body;
 
@@ -77,6 +80,7 @@ const registerUser = asyncHandler(async (req, res) => {
     );
 });
 
+//! Log in
 const login = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
@@ -130,6 +134,7 @@ const login = asyncHandler(async (req, res) => {
     );
 });
 
+//! Log Out
 const logout = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
     req.user_id,
@@ -154,12 +159,14 @@ const logout = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "User Logged Out!"));
 });
 
+//! Get Currect User
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, req.user, "Current user fetched successfully."));
 });
 
+//! Verify Email
 const verifyEmail = asyncHandler(async (req, res) => {
   const { verificationToken } = req.params;
 
@@ -199,6 +206,56 @@ const verifyEmail = asyncHandler(async (req, res) => {
   );
 });
 
+//! Resend email verification
+const resendEmailVerification = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user?._id);
+
+  if (!user) {
+    throw new ApiError(404, "User does not exist");
+  }
+
+  if (user.isEmailVarified) {
+    throw new ApiError(409, "Email is already verified!");
+  }
+
+  const { unHashedToken, hashedToken, tokenExpiry } =
+    user.generateTemoporaryToken();
+
+  user.emailVarificationToken = hashedToken;
+  user.emailVarificationExpiry = tokenExpiry;
+
+  await user.save({ validateBeforeSave: false });
+
+  await sendEmail({
+    email: user?.email,
+    subject: "Please verify you email.",
+    mailgenContent: emailVerificationMail(
+      user.username,
+      `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`,
+    ),
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Mail has been sent to your email."));
+});
+
+//! Refresh access token
+const refreshAccessToken = asyncHandler(async (req , res) => {
+  const incommingRefreshToken = req.cookie.refreshToken || req.body.refreshToken;
+
+  if(!incommingRefreshToken) {
+    throw new ApiError(401, "Unauthorixed access!")
+  }
+})
+
 // const getCurrentUser = asyncHandler(async (req , res) => {})
 
-export { registerUser, login, logout, getCurrentUser };
+export {
+  registerUser,
+  login,
+  logout,
+  getCurrentUser,
+  verifyEmail,
+  resendEmailVerification,
+};
