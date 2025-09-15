@@ -4,7 +4,7 @@ import { ApiError } from "../utils/api-error.js";
 import { asyncHandler } from "../utils/async-handler.js";
 import { emailVerificationMail, sendEmail } from "../utils/mail.js";
 import crypto from "crypto";
-import jwt from "jsonwebtoken"
+import jwt from "jsonwebtoken";
 
 //! Generate Access & Refresh Token
 const generateAccessAndRefreshToken = async (userId) => {
@@ -241,13 +241,55 @@ const resendEmailVerification = asyncHandler(async (req, res) => {
 });
 
 //! Refresh access token
-const refreshAccessToken = asyncHandler(async (req , res) => {
-  const incommingRefreshToken = req.cookie.refreshToken || req.body.refreshToken;
+const refreshAccessToken = asyncHandler(async (req, res) => {
+  const incommingRefreshToken =
+    req.cookie.refreshToken || req.body.refreshToken;
 
-  if(!incommingRefreshToken) {
-    throw new ApiError(401, "Unauthorixed access!")
+  if (!incommingRefreshToken) {
+    throw new ApiError(401, "Unauthorixed access!");
   }
-})
+
+  try {
+    const decodedToken = jwt.verify(
+      incommingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET,
+    );
+
+    const user = await User.findById(decodedToken?._id);
+    if (!user) {
+      throw new ApiError(404, "Invalid refresh token");
+    }
+
+    if (incommingRefreshToken !== user?.refreshToken) {
+      throw new ApiError(404, "Invalid refresh token");
+    }
+
+    const options = {
+      httpOnly: true,
+      secure: true,
+    };
+
+    const { accessToken, refreshToken: newRefreshToken } =
+      await generateAccessAndRefreshToken(user._id);
+
+    user.refreshToken = newRefreshToken;
+    await user.save();
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
+      .json(
+        new ApiResponse(
+          200,
+          { accessToken, refreshToken: newRefreshToken },
+          "Access Token refreshed!",
+        ),
+      );
+  } catch (error) {
+    throw new ApiError(401, "Refresh token is expired!");
+  }
+});
 
 // const getCurrentUser = asyncHandler(async (req , res) => {})
 

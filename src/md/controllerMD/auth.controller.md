@@ -267,8 +267,11 @@ const verifyEmail = asyncHandler(async (req, res) => {
   );
 });
 ```
+
 ---
+
 ### Resent email verification
+
 ```js
 const resendEmailVerification = asyncHandler(async (req, res) => {
   // Find the currently logged-in user by ID (req.user is set by auth middleware)
@@ -306,7 +309,7 @@ const resendEmailVerification = asyncHandler(async (req, res) => {
     subject: "Please verify you email.",
     mailgenContent: emailVerificationMail(
       user.username,
-      `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`
+      `${req.protocol}://${req.get("host")}/api/va/users/verify-email/${unHashedToken}`,
     ),
   });
 
@@ -316,8 +319,8 @@ const resendEmailVerification = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Mail has been sent to your email."));
 });
 ```
----
 
+---
 
 ---
 
